@@ -1,0 +1,5 @@
+name: TNTBank
+main: com.felixob.tb.TNTBank
+author: Chookla
+version: 1.0.0
+loadbefore: ["Factions"]
