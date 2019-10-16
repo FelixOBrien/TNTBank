@@ -1,6 +1,5 @@
 package com.felixob.tb.commands;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +19,6 @@ import com.felixob.tb.FactionCache;
 import com.felixob.tb.TNTBank;
 import com.felixob.tb.config.Settings;
 import com.felixob.tb.utils.Common;
-import com.massivecraft.factions.Factions;
 import com.massivecraft.factions.cmd.CommandContext;
 import com.massivecraft.factions.cmd.CommandRequirements;
 import com.massivecraft.factions.cmd.FCommand;
@@ -34,7 +32,9 @@ public class FTNT extends FCommand{
 		this.aliases.add("tnt");
 
 		this.requiredArgs.add("type");
-		this.optionalArgs.put("#", "amount");
+		this.optionalArgs.put("#", "amount/radius");
+		this.optionalArgs.put("fill", "amount");
+
 
 		this.requirements = new CommandRequirements.Builder(Permission.TNT_BANK).memberOnly().noDisableOnLock().build();
 	}
@@ -70,7 +70,7 @@ public class FTNT extends FCommand{
 
 		}
 
-		if(args.size() == 2) {
+		if(args.size() >= 2) {
 			int amount = 0;
 			HashMap<Integer, ? extends ItemStack> ting = p.getInventory().all(Material.TNT);
 			boolean all = false;
@@ -79,7 +79,7 @@ public class FTNT extends FCommand{
 				for(Entry<Integer, ? extends ItemStack> i : ting.entrySet()) {
 					amount += i.getValue().getAmount();
 				}
-				
+
 			}else{
 				try {
 					amount = Integer.parseInt(args.get(1));
@@ -103,10 +103,8 @@ public class FTNT extends FCommand{
 					limit = cache.tntCount(context.faction.getId());
 				}
 				if(all) {
-					Common.tell(p, "Withdrawing " + limit + " TNT");
-					cache.withdrawTNT(context.faction.getId(), limit);
+					cache.withdrawTNT(context.faction.getId(), limit, p);
 					p.getInventory().addItem(new ItemStack(Material.TNT, limit));
-					Common.tell(p, Settings.withdrawMessage);
 					return;
 				}else {
 					if(amount <= 0) {
@@ -114,19 +112,19 @@ public class FTNT extends FCommand{
 						return;
 					}
 					if(amount > cache.tntCount(context.faction.getId())) {
-						Common.tell(p, Settings.notEnoughTNT + " Bank has: " + cache.tntCount(context.faction.getId()) + " TNT");
+						Common.tell(p, Settings.notEnoughTNT.replaceAll("%current_tnt%", "" + cache.tntCount(context.faction.getId())));
 						return;
 					}
-					cache.withdrawTNT(context.faction.getId(), amount);
+					cache.withdrawTNT(context.faction.getId(), amount, p);
 					p.getInventory().addItem(new ItemStack(Material.TNT, amount));
-
-					Common.tell(p, Settings.withdrawMessage);
-					Common.tell(p, "&aBank now has " + cache.tntCount(context.faction.getId()) + " TNT.");
-
 					return;
 				}
 
 			}else if(args.get(0).equals("deposit")) {
+				if(cache.tntCount(context.faction.getId()) >= Settings.tntLimit) {
+					Common.tell(p, Settings.tntLimitReached.replaceAll("%tnt_limit%", Settings.tntLimit + ""));
+					return;
+				}
 				if(amount <1) {
 					Common.tell(p, "&cYou do not have any TNT");
 					return;
@@ -135,8 +133,7 @@ public class FTNT extends FCommand{
 
 
 					p.getInventory().remove(Material.TNT);
-					cache.depositTNT(context.faction.getId(), amount);
-					Common.tell(p, "&a" + amount + " TNT Deposited");
+					cache.depositTNT(context.faction.getId(), amount, p);
 					return;
 				}else {
 					int totalTnt = 0;
@@ -144,12 +141,12 @@ public class FTNT extends FCommand{
 						totalTnt += i.getValue().getAmount();
 					}
 					if(amount > totalTnt) {
-						Common.tell(p, Settings.notEnoughTNTInv + " You have: "+ amount + " TNT");
+						
+						Common.tell(p, Settings.notEnoughTNTInv.replaceAll("%current_tnt%", amount + ""));
 						return;
 					}
 					p.getInventory().removeItem(new ItemStack(Material.TNT, amount));
-					cache.depositTNT(context.faction.getId(), amount);
-					Common.tell(p, "&a" + amount + " TNT Deposited");
+					cache.depositTNT(context.faction.getId(), amount, p);
 					return;
 				}
 
@@ -162,38 +159,38 @@ public class FTNT extends FCommand{
 				if(all) {
 					radius = 32;
 				}else {
-					 if(amount > 0) {
-					 radius = amount;
-					 }else {
-						 Common.tell(p, Settings.smallRadius);
-						 return;
-					 }
+					if(amount > 0) {
+						radius = amount;
+					}else {
+						Common.tell(p, Settings.smallRadius);
+						return;
+					}
 				}
-				
+
 				Location loc = p.getLocation();
 				World world = loc.getWorld();
 				Map<Chest, Integer> chests = new HashMap<Chest, Integer>();
 				Map<Dispenser, Integer> dispensers = new HashMap<Dispenser, Integer>();
 				int slotsToFill = 0;
 				for (int x = -radius; x < radius; x++) {
-				    for (int y = -radius; y < radius; y++) {
-				        for (int z = -radius; z < radius; z++) {
-				            Block block = world.getBlockAt(loc.getBlockX()+x, loc.getBlockY()+y, loc.getBlockZ()+z);
-				            if (block.getType() == Material.DISPENSER) {
+					for (int y = -radius; y < radius; y++) {
+						for (int z = -radius; z < radius; z++) {
+							Block block = world.getBlockAt(loc.getBlockX()+x, loc.getBlockY()+y, loc.getBlockZ()+z);
+							if (block.getType() == Material.DISPENSER) {
 								Dispenser dispenser = (Dispenser) block.getState();
 								int freeSpace = freeSpaceInv(dispenser.getInventory());
 								slotsToFill += freeSpace;
 
 								dispensers.put(dispenser, freeSpace);
-				            }else if(block.getType() == Material.CHEST) {
-				            	Chest chest = (Chest) block.getState();
+							}else if(block.getType() == Material.CHEST) {
+								Chest chest = (Chest) block.getState();
 								int freeSpace = freeSpaceInv(chest.getInventory());
 								slotsToFill += freeSpace;
-				            	chests.put(chest, freeSpace);
+								chests.put(chest, freeSpace);
 
-				            }
-				        }
-				    }
+							}
+						}
+					}
 				}
 				int objectCount = chests.size() + dispensers.size();
 				if(objectCount <1) {
@@ -201,11 +198,51 @@ public class FTNT extends FCommand{
 					return;
 				}
 				int currentTNT = cache.tntCount(context.faction.getId());
+				if(args.get(2) != null) {
+					int perContainer = Integer.parseInt(args.get(2));
+					if(perContainer <= 0) {
+						Common.tell(p, Settings.negativeTNT);
+						return;
+					}
+					int total = perContainer * objectCount;
+					if(total > currentTNT) {
+						int tntPerObject = (int) Math.floor(currentTNT/objectCount);
+						int remainder = currentTNT - (tntPerObject * objectCount);
+						for (Map.Entry<Chest, Integer> entry : chests.entrySet()) {
+							entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, tntPerObject));
+						}
+						for (Map.Entry<Dispenser, Integer> entry : dispensers.entrySet()) {
+							entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, tntPerObject));
+						}
+						if(remainder > 0) {
+							if(chests.size() > 0) {
+								Entry<Chest, Integer> entry = chests.entrySet().iterator().next();
+								entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
+							}else {
+								Entry<Dispenser, Integer> entry = dispensers.entrySet().iterator().next();
+								entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
+							}
+							cache.withdrawTNT(context.faction.getId(), currentTNT, p);
+							Common.tell(p, Settings.successFill.replaceAll("%filled_slots%", currentTNT + ""));
+							return;
+						}
+
+					}else {
+						for (Map.Entry<Chest, Integer> entry : chests.entrySet()) {
+							entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, perContainer));
+						}
+						for (Map.Entry<Dispenser, Integer> entry : dispensers.entrySet()) {
+							entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, perContainer));
+						}
+						cache.withdrawTNT(context.faction.getId(), total, p);
+						Common.tell(p, Settings.successFill.replaceAll("%filled_slots%", total + ""));
+						return;
+					}
+
+				}
 				if(slotsToFill > currentTNT) {
 					int tntPerObject = (int) Math.floor(currentTNT/objectCount);
-					Common.log("TNT PER OBJECT: " + tntPerObject);
 					int remainder = currentTNT - (tntPerObject * objectCount);
-					Common.log("Remainder: " + remainder);
 					for (Map.Entry<Chest, Integer> entry : chests.entrySet()) {
 						entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, tntPerObject));
 					}
@@ -213,18 +250,17 @@ public class FTNT extends FCommand{
 						entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, tntPerObject));
 					}
 					if(remainder > 0) {
-					if(chests.size() > 0) {
-						Entry<Chest, Integer> entry = chests.entrySet().iterator().next();
-						Common.log("Adding Remainder");
-						entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
-					}else {
-						Entry<Dispenser, Integer> entry = dispensers.entrySet().iterator().next();
-						entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
-					}
+						if(chests.size() > 0) {
+							Entry<Chest, Integer> entry = chests.entrySet().iterator().next();
+							entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
+						}else {
+							Entry<Dispenser, Integer> entry = dispensers.entrySet().iterator().next();
+							entry.getKey().getInventory().addItem((new ItemStack(Material.TNT, remainder)));
+						}
 					}
 					slotsToFill = currentTNT;
 
-					
+
 				}else {
 					for (Map.Entry<Chest, Integer> entry : chests.entrySet()) {
 						entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, entry.getValue()));
@@ -232,24 +268,20 @@ public class FTNT extends FCommand{
 					for (Map.Entry<Dispenser, Integer> entry : dispensers.entrySet()) {
 						entry.getKey().getInventory().addItem(new ItemStack(Material.TNT, entry.getValue()));
 					}
-					
-				}
-				cache.withdrawTNT(context.faction.getId(), slotsToFill);
-				Common.tell(p, "&aSuccessfully Filled Containers with "+ slotsToFill + " TNT.");
-				return;
-				//Where Dispenser is di
-				//Dispenser is 
 
+				}
+				cache.withdrawTNT(context.faction.getId(), slotsToFill, p);
+				Common.tell(p, Settings.successFill.replaceAll("%filled_slots%", slotsToFill + ""));
+				return;
 			}
 			Common.tell(p, Settings.unknownDirection);
 			return;
 		}
 
 		return;
-
 	}
 
-	private int freeSpaceInv(Inventory inv) {
+	public static int freeSpaceInv(Inventory inv) {
 		int limit = 0;
 		for(ItemStack i : inv.getContents()) {
 			if(i == null) {
@@ -261,7 +293,6 @@ public class FTNT extends FCommand{
 				//Empty Slots = FREE REAL ESTATE
 				limit += i.getMaxStackSize();
 			}
-
 		}
 		return limit;
 	}

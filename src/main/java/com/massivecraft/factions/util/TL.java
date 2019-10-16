@@ -18,9 +18,6 @@ package com.massivecraft.factions.util;
 
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
-
-import com.massivecraft.factions.struct.Permission;
-
 import java.text.SimpleDateFormat;
 
 /**

@@ -9,6 +9,9 @@ import java.io.ObjectOutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.bukkit.entity.Player;
+
+import com.felixob.tb.config.Settings;
 import com.felixob.tb.utils.Common;
 
 
@@ -25,6 +28,7 @@ public class FactionCache {
 		this.init();
 	}
 
+	@SuppressWarnings("unchecked")
 	public void init()
 	{
 		File dataFolder = this.plugin.getDataFolder();
@@ -47,18 +51,18 @@ public class FactionCache {
 		if(map.get(id) != null) {
 			return map.get(id);
 		}else {
-			depositTNT(id, 0);
+			map.put(id, 0);
 			return map.get(id);
 		}
 	}
-	public void depositTNT(String id, int amount) {
+	public void depositTNT(String id, int amount, Player p) {
 		if(map.get(id) == null) {
 	
 			map.put(id, amount);
 		}
 		int tnt = map.get(id);
 		map.put(id, amount + tnt);
-
+		Common.tell(p, Settings.depositMessage.replaceAll("%amount%", amount + ""));
 		try {
 			if(file.exists()) {
 				file.delete();
@@ -70,9 +74,12 @@ public class FactionCache {
 		}
 		save();
 	}
-	public void withdrawTNT(String id, int amount) {
+	public void withdrawTNT(String id, int amount, Player p) {
 		map.put(id, tntCount(id) - amount);
 		save();
+
+		Common.tell(p, Settings.withdrawMessage.replaceAll("%amount%", "" + amount).replaceAll("%current_tnt%", "" + map.get(id)));
+		Common.tell(p, Settings.currentTNT.replaceAll("%current_tnt%", "" +map.get(id)));
 	}
 	public Map<String, Integer> getMap(){
 		return map;
